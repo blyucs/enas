@@ -99,14 +99,14 @@ def get_ops(images, labels):
 
   assert FLAGS.search_for is not None, "Please specify --search_for"
 
-  if FLAGS.search_for == "micro":
+  if FLAGS.search_for == "micro":# decide to search for Micro or Macro
     ControllerClass = MicroController
     ChildClass = MicroChild
   else:
     ControllerClass = GeneralController
     ChildClass = GeneralChild
 
-  child_model = ChildClass(
+  child_model = ChildClass(  # may be Micro or Macro
     images,
     labels,
     use_aux_heads=FLAGS.child_use_aux_heads,
@@ -141,7 +141,7 @@ def get_ops(images, labels):
   )
 
   if FLAGS.child_fixed_arc is None:
-    controller_model = ControllerClass(
+    controller_model = ControllerClass(  # may be Micro or Macro
       search_for=FLAGS.search_for,
       search_whole_channels=FLAGS.controller_search_whole_channels,
       skip_target=FLAGS.controller_skip_target,
@@ -177,11 +177,11 @@ def get_ops(images, labels):
       "train_op": controller_model.train_op,
       "lr": controller_model.lr,
       "grad_norm": controller_model.grad_norm,
-      "valid_acc": controller_model.valid_acc,
+      "valid_acc": controller_model.valid_acc,  # valid the arc sampled by controller
       "optimizer": controller_model.optimizer,
       "baseline": controller_model.baseline,
       "entropy": controller_model.sample_entropy,
-      "sample_arc": controller_model.sample_arc,
+      "sample_arc": controller_model.sample_arc,  #sample a arc
       "skip_rate": controller_model.skip_rate,
     }
   else:
@@ -220,7 +220,7 @@ def train():
 
   g = tf.Graph()
   with g.as_default():
-    ops = get_ops(images, labels)
+    ops = get_ops(images, labels) #choose to initialize child_model or controller_model in ops to be Micro or Macro
     child_ops = ops["child"]
     controller_ops = ops["controller"]
 
@@ -250,8 +250,9 @@ def train():
             child_ops["train_acc"],
             child_ops["train_op"],
           ]
+          # train the child ,trian_op ->(loss,lr,grad_norm) train_acc->train_pridict
           loss, lr, gn, tr_acc, _ = sess.run(run_ops)
-          global_step = sess.run(child_ops["global_step"])
+          global_step = sess.run(child_ops["global_step"]) #
 
           if FLAGS.child_sync_replicas:
             actual_step = global_step * FLAGS.num_aggregate
@@ -288,6 +289,8 @@ def train():
                   controller_ops["skip_rate"],
                   controller_ops["train_op"],
                 ]
+                # train the controller train_op->(loss->(valid_acc,baseline),entropy,lr,)
+                # each valid_acc means a validation of the chlid mode(forward),that will consist of the reward
                 loss, entropy, lr, gn, val_acc, bl, skip, _ = sess.run(run_ops)
                 controller_step = sess.run(controller_ops["train_step"])
 
@@ -308,8 +311,8 @@ def train():
               print("Here are 10 architectures")
               for _ in range(10):
                 arc, acc = sess.run([
-                  controller_ops["sample_arc"],
-                  controller_ops["valid_acc"],
+                  controller_ops["sample_arc"],  #sample a arc
+                  controller_ops["valid_acc"],  #valid the arc
                 ])
                 if FLAGS.search_for == "micro":
                   normal_arc, reduce_arc = arc
